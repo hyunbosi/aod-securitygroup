@@ -1,0 +1,84 @@
+import boto3
+import json
+import logging
+import os
+from base64 import b64decode
+from urllib.request import Request, urlopen
+from urllib.error import URLError, HTTPError
+
+HOOK_URL = "https://hooks.slack.com/services/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"
+# The Slack channel to send a message to stored in the slackChannel environment variable
+SLACK_CHANNEL = "sns-test"
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+# sns = boto3.client('sns')
+
+def lambda_handler(event, context):
+    if event['Records'][0]['Sns']:
+        # sns_event = event['Records'][0]['Sns']['Message']
+        sns_event = json.loads(event['Records'][0]['Sns']['Message'])
+        # print(sns_event)
+        event_type = sns_event['detail-type']
+        event_time = sns_event['time']
+        # event_resourec = sns_event['detail']['resourceId']
+        event_rulename = sns_event['detail']['configRuleName']
+        #if event_rulename.startwith('FMS~~~~') 
+            event_messagetype = sns_event['detail']['messageType']
+            instanceID = sns_event['detail']['resourceId']
+            accountId = sns_event['detail']['awsAccountId']
+            complianceType = sns_event['detail']['newEvaluationResult']['complianceType']
+            slack_message_text = formatMyMessage(instanceID, accountId, event_type, event_time, event_rulename, event_messagetype,complianceType)
+            req = Request(HOOK_URL, json.dumps(slack_message_text).encode('utf-8'))
+        #else if event_rule.startwith('securityhub~~~~')
+
+    try:
+        response = urlopen(req)
+        response.read()
+        logger.info("Message posted to %s", SLACK_CHANNEL)
+    except HTTPError as e:
+        logger.error("Request failed: %d %s", e.code, e.reason)
+    except URLError as e:
+        logger.error("Server connection failed: %s", e.reason)
+
+    return event
+
+def formatMyMessage(instanceID, accountId, event_type, event_time, event_rulename, event_messagetype,complianceType):
+    slack_message = {
+        "attachments": [
+            {
+                "fallback": "Required plain-text summary of the attachment.",
+                "color": "#b7121a",
+                "title": "High Alert!! Check Your Account FMM & Security Groups : " + str(event_rulename),
+                "text": "",
+                "fields":[{
+                        "value": "Here is a summary of the finding:"
+                    },
+                    {
+                        "type": "mrkdwn",
+                        "value": "*`Time : `* " + event_time
+                    },
+                    {
+                        "value": "*`Title : `* " + event_type
+                    },
+                    # {
+                    #     "value": "ConfigRuleName : " + event_rulename
+                    # },
+                    {
+                        "value": "*`Description :`* " + event_messagetype
+                    },
+                    {
+                        "value": "*`Instance ID :`* " + instanceID
+                    },
+                    {
+                        "value": "*`Accound ID: `* " + accountId
+                    },
+                    {
+                        "value": "*`Compliance Type :`* " + complianceType
+                    },
+                    {
+                        "value": "### Check Account FMM & Korea Proserve SRC HHS & SHB ###"
+                    }]
+            }
+        ]
+    }
+    return slack_message
